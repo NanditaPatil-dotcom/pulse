@@ -1,4 +1,4 @@
-# Alpine--pipline
+# Pulseee
 ```
 Node 1 — Smartwatch Simulator
       ↓ (Kafka Producer)
