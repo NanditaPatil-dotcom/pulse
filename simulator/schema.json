@@ -1,0 +1,6 @@
+{
+  "device_id": "string",
+  "heart_rate": "integer",
+  "spo2": "integer",
+  "timestamp": "string"
+}
