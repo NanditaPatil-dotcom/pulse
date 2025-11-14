@@ -1,3 +1,4 @@
+import os
 from kafka import KafkaConsumer
 import json
 from datetime import datetime
@@ -6,8 +7,8 @@ from app.ml import predict_risk
 
 def start_consumer():
     consumer = KafkaConsumer(
-        "pulse_readings",
-        bootstrap_servers="localhost:9092",
+        os.getenv("KAFKA_TOPIC"),
+        bootstrap_servers=os.getenv("KAFKA_BROKER"),
         value_deserializer=lambda v: json.loads(v.decode("utf-8"))
     )
 
