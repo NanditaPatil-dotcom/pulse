@@ -1,7 +1,6 @@
-CREATE TABLE IF NOT EXISTS sensor_data (
+-- optional initial SQL to create schema or seed data
+CREATE TABLE IF NOT EXISTS sample_users (
     id SERIAL PRIMARY KEY,
-    device_id VARCHAR(50),
-    temperature FLOAT,
-    humidity FLOAT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    user_id VARCHAR(50) UNIQUE,
+    name VARCHAR(100)
 );
