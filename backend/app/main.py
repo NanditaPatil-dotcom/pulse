@@ -7,13 +7,14 @@ from app.ml import predict_risk, model_wrapper
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
-from app.db import insert_vital, insert_prediction, fetch_latest_vital, fetch_history, fetch_metrics
+from app.db import init_db, insert_vital, insert_prediction, fetch_latest_vital, fetch_history, fetch_metrics
 from app.schemas import VitalOut
 
 app = FastAPI(title="Pulse Backend API")
 
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
+    await init_db()
     Thread(target=start_consumer, daemon=True).start()
 
 @app.get("/readings/latest")
