@@ -2,13 +2,13 @@ from fastapi import FastAPI, HTTPException
 from threading import Thread
 from typing import List, Optional
 from datetime import datetime
-from sqlalchemy import select
+
 from pydantic import BaseModel
 
 from app.consumer import start_consumer
 from app.db import (
-    AsyncSessionLocal,
-    Vitals,
+    SessionLocal,
+    PulseRecord,
     init_db,
     insert_vital,
     insert_prediction,
@@ -41,12 +41,16 @@ async def startup_event():
 # -------------------------------------------------------------------
 
 @app.get("/readings/latest")
-async def latest_readings():
-    async with AsyncSessionLocal() as session:
-        q = select(Vitals).order_by(Vitals.timestamp.desc()).limit(20)
-        res = await session.execute(q)
-        rows = res.scalars().all()
-        return rows
+def latest_readings():
+    db = SessionLocal()
+    rows = (
+        db.query(PulseRecord)
+        .order_by(PulseRecord.timestamp.desc())
+        .limit(20)
+        .all()
+    )
+    db.close()
+    return rows
 
 
 # -------------------------------------------------------------------
@@ -54,7 +58,7 @@ async def latest_readings():
 # -------------------------------------------------------------------
 
 @app.post("/predict", response_model=PredictionResult)
-def predict_endpoint(data: Vitals):
+def predict_endpoint(data: PulseReading):
     score, explanation = predict_risk(data.heart_rate, data.spo2)
     return {"risk_score": score, "explanation": explanation}
 

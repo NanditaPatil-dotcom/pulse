@@ -2,12 +2,12 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, Integer, Float, String, DateTime, JSON, func
+from sqlalchemy import Column, Integer, Float, String, DateTime, JSON, func, select
 from datetime import datetime, timedelta
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
-
+print("DATABASE_URL =", repr(DATABASE_URL))
 engine = create_async_engine(DATABASE_URL)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession)
 
