@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI, HTTPException
 from threading import Thread
 from typing import List, Optional
@@ -16,7 +17,7 @@ from app.db import (
     fetch_history,
     fetch_metrics,
 )
-from app.schemas import PulseReading, PredictionResult, VitalOut
+from app.schemas import VitalIn, VitalOut, PredictionOut
 from app.ml import predict_risk, model_wrapper
 
 # -------------------------------------------------------------------
@@ -29,11 +30,25 @@ app = FastAPI(title="Pulse Backend API")
 # -------------------------------------------------------------------
 # Startup: init DB + start Kafka consumer
 # -------------------------------------------------------------------
+async def handle_kafka_message(data: dict):
+    """
+    Convert Kafka JSON dict -> VitalIn -> DB
+    """
+    try:
+        vital = VitalIn(**data)
+        await insert_vital(vital)
+    except Exception as e:
+        print("[Kafka] Failed to insert vital:", e, "| data:", data)
+
 
 @app.on_event("startup")
 async def startup_event():
     await init_db()
-    Thread(target=start_consumer, daemon=True).start()
+    Thread(
+    target=lambda: asyncio.run(start_consumer(handle_kafka_message)),
+    daemon=True
+    ).start()
+
 
 
 # -------------------------------------------------------------------
@@ -53,8 +68,8 @@ async def latest_readings():
 # ML prediction endpoint (simple)
 # -------------------------------------------------------------------
 
-@app.post("/predict", response_model=PredictionResult)
-def predict_endpoint(data: Vitals):
+@app.post("/predict", response_model=PredictionOut)
+def predict_endpoint(data: VitalIn):
     score, explanation = predict_risk(data.heart_rate, data.spo2)
     return {"risk_score": score, "explanation": explanation}
 
