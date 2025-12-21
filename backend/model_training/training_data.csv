@@ -1,0 +1,4 @@
+device_id,user_id,timestamp,heart_rate,spo2,temp_c,steps,risk_score,risk_label
+pulse_001,pulse_001,2025-12-20 10:10:29.955538,95,96,,,0.0,low
+pulse_001,pulse_001,2025-12-20 10:10:51.286172,95,60,,,0.5,medium
+pulse_001,pulse_001,2025-12-20 10:11:57.868290,95,91,,,0.35,medium
