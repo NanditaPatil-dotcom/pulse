@@ -31,23 +31,36 @@ app = FastAPI(title="Pulse Backend API")
 # Startup: init DB + start Kafka consumer
 # -------------------------------------------------------------------
 async def handle_kafka_message(data: dict):
-    """
-    Convert Kafka JSON dict -> VitalIn -> DB
-    """
     try:
-        vital = VitalIn(**data)
-        await insert_vital(vital)
+        await insert_vital_from_dict(data)
     except Exception as e:
         print("[Kafka] Failed to insert vital:", e, "| data:", data)
+async def insert_vital_from_dict(data: dict):
+    async with AsyncSessionLocal() as session:
+        v = Vitals(
+            device_id=data["device_id"],
+            user_id=data["user_id"],
+            heart_rate=data["heart_rate"],
+            spo2=data["spo2"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+        )
+        session.add(v)
+        await session.commit()
+
 
 
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+
+    loop = asyncio.get_running_loop()
+
     Thread(
-    target=lambda: asyncio.run(start_consumer(handle_kafka_message)),
-    daemon=True
+        target=start_consumer,
+        args=(loop, handle_kafka_message),
+        daemon=True
     ).start()
+
 
 
 
