@@ -1,10 +1,11 @@
 import asyncio
-from fastapi import FastAPI, HTTPException
+from datetime import datetime
 from threading import Thread
 from typing import List, Optional
-from datetime import datetime
-from sqlalchemy import select
+
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from app.consumer import start_consumer
 from app.db import (
@@ -12,41 +13,52 @@ from app.db import (
     Vitals,
     init_db,
     insert_vital,
-    insert_prediction,
     fetch_latest_vital,
     fetch_history,
     fetch_metrics,
 )
-from app.schemas import VitalIn, VitalOut, PredictionOut, PredictionResponse
-from app.ml import predict_risk, model_wrapper, pulse_model
+from app.schemas import VitalOut, PredictionResponse
+from app.ml import pulse_model
 
-# -------------------------------------------------------------------
+# ============================================================
 # App init
-# -------------------------------------------------------------------
+# ============================================================
 
 app = FastAPI(title="Pulse Backend API")
 
+# ============================================================
+# Kafka handling
+# ============================================================
 
-# -------------------------------------------------------------------
-# Startup: init DB + start Kafka consumer
-# -------------------------------------------------------------------
 async def handle_kafka_message(data: dict):
+    """
+    Handles Kafka message → inserts vitals → optional ML inference
+    """
     try:
-        await insert_vital_from_dict(data)
-    except Exception as e:
-        print("[Kafka] Failed to insert vital:", e, "| data:", data)
-async def insert_vital_from_dict(data: dict):
-    async with AsyncSessionLocal() as session:
-        v = Vitals(
-            device_id=data["device_id"],
-            user_id=data["user_id"],
-            heart_rate=data["heart_rate"],
-            spo2=data["spo2"],
-            timestamp=datetime.fromisoformat(data["timestamp"]),
-        )
-        session.add(v)
-        await session.commit()
+        async with AsyncSessionLocal() as session:
+            v = Vitals(
+                device_id=data["device_id"],
+                user_id=data.get("user_id", data["device_id"]),
+                heart_rate=data["heart_rate"],
+                spo2=data["spo2"],
+                temp_c=data.get("temp_c"),
+                steps=data.get("steps"),
+                timestamp=datetime.fromisoformat(data["timestamp"]),
+            )
+            session.add(v)
+            await session.commit()
 
+            # ML inference (non-blocking)
+            features = {
+                "heart_rate": v.heart_rate,
+                "spo2": v.spo2,
+                "temp_c": v.temp_c or 0.0,
+                "steps": v.steps or 0,
+            }
+            pulse_model.predict(features)
+
+    except Exception as e:
+        print("[Kafka] Failed:", e, "| data:", data)
 
 
 @app.on_event("startup")
@@ -58,57 +70,27 @@ async def startup_event():
     Thread(
         target=start_consumer,
         args=(loop, handle_kafka_message),
-        daemon=True
+        daemon=True,
     ).start()
 
-
-
-
-# -------------------------------------------------------------------
-# Basic read endpoint (debug)
-# -------------------------------------------------------------------
-
-@app.get("/readings/latest")
-async def latest_readings():
-    async with AsyncSessionLocal() as session:
-        q = select(Vitals).order_by(Vitals.timestamp.desc()).limit(20)
-        res = await session.execute(q)
-        rows = res.scalars().all()
-        return rows
-
-
-# -------------------------------------------------------------------
-# ML prediction endpoint (simple)
-# -------------------------------------------------------------------
-
-@app.post("/predict", response_model=PredictionOut)
-def predict_endpoint(data: VitalIn):
-    score, explanation = predict_risk(data.heart_rate, data.spo2)
-    return {"risk_score": score, "explanation": explanation}
-
-
-# -------------------------------------------------------------------
-# HTTP ingestion payload (optional path alongside Kafka)
-# -------------------------------------------------------------------
+# ============================================================
+# HTTP ingestion (manual / testing)
+# ============================================================
 
 class IngestPayload(BaseModel):
     device_id: str
     user_id: str
-    timestamp: Optional[datetime] = None
     heart_rate: int
     spo2: int
+    timestamp: Optional[datetime] = None
     temp_c: Optional[float] = None
     steps: Optional[int] = None
 
 
 @app.post("/api/v1/ingest")
 async def http_ingest(payload: IngestPayload):
-    """
-    Allow HTTP ingestion for prototyping / testing
-    """
     vitals_id = await insert_vital(payload)
 
-    # Feature vector for ML
     features = {
         "heart_rate": payload.heart_rate,
         "spo2": payload.spo2,
@@ -116,62 +98,17 @@ async def http_ingest(payload: IngestPayload):
         "steps": payload.steps or 0,
     }
 
-    # Run ML model if loaded
-    if model_wrapper and model_wrapper.is_loaded:
-        pred_label, prob, shap_json, model_version = (
-            model_wrapper.predict_with_shap(features)
-        )
-        await insert_prediction(
-            vitals_id, pred_label, prob, shap_json, model_version
-        )
-    else:
-        print("Model not loaded; skipping prediction")
+    result = pulse_model.predict(features)
 
-    return {"status": "ok", "vitals_id": vitals_id}
-
-
-# -------------------------------------------------------------------
-# Health check
-# -------------------------------------------------------------------
-
-@app.get("/health")
-async def health():
     return {
         "status": "ok",
-        "model_loaded": bool(model_wrapper and model_wrapper.is_loaded),
+        "vitals_id": vitals_id,
+        "prediction": result,
     }
 
-
-# -------------------------------------------------------------------
-# Live vitals (latest per user)
-# -------------------------------------------------------------------
-
-@app.get("/api/v1/live", response_model=VitalOut)
-async def get_live(user_id: str):
-    row = await fetch_latest_vital(user_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="No vitals found")
-    return row
-
-
-# -------------------------------------------------------------------
-# Historical vitals
-# -------------------------------------------------------------------
-
-@app.get("/api/v1/history", response_model=List[VitalOut])
-async def get_history(user_id: str, hours: int = 24):
-    rows = await fetch_history(user_id, hours)
-    return rows
-
-
-# -------------------------------------------------------------------
-# Model metrics
-# -------------------------------------------------------------------
-
-@app.get("/api/v1/metrics")
-async def get_model_metrics():
-    metrics = await fetch_metrics()
-    return metrics
+# ============================================================
+# Prediction endpoint (pure ML)
+# ============================================================
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(payload: dict):
@@ -181,3 +118,43 @@ async def predict(payload: dict):
         raise HTTPException(status_code=500, detail="Model not loaded")
 
     return result
+
+# ============================================================
+# Read APIs
+# ============================================================
+
+@app.get("/readings/latest")
+async def latest_readings():
+    async with AsyncSessionLocal() as session:
+        q = select(Vitals).order_by(Vitals.timestamp.desc()).limit(20)
+        res = await session.execute(q)
+        return res.scalars().all()
+
+
+@app.get("/api/v1/live", response_model=VitalOut)
+async def get_live(user_id: str):
+    row = await fetch_latest_vital(user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="No vitals found")
+    return row
+
+
+@app.get("/api/v1/history", response_model=List[VitalOut])
+async def get_history(user_id: str, hours: int = 24):
+    return await fetch_history(user_id, hours)
+
+# ============================================================
+# System health
+# ============================================================
+
+@app.get("/health")
+async def health():
+    return {
+        "status": "ok",
+        "ml_loaded": pulse_model.is_loaded,
+    }
+
+
+@app.get("/api/v1/metrics")
+async def get_model_metrics():
+    return await fetch_metrics()
