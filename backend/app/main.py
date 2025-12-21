@@ -17,8 +17,8 @@ from app.db import (
     fetch_history,
     fetch_metrics,
 )
-from app.schemas import VitalIn, VitalOut, PredictionOut
-from app.ml import predict_risk, model_wrapper
+from app.schemas import VitalIn, VitalOut, PredictionOut, PredictionResponse
+from app.ml import predict_risk, model_wrapper, pulse_model
 
 # -------------------------------------------------------------------
 # App init
@@ -172,3 +172,12 @@ async def get_history(user_id: str, hours: int = 24):
 async def get_model_metrics():
     metrics = await fetch_metrics()
     return metrics
+
+@app.post("/predict", response_model=PredictionResponse)
+async def predict(payload: dict):
+    result = pulse_model.predict(payload)
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Model not loaded")
+
+    return result

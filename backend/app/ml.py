@@ -1,108 +1,88 @@
+
 import os
 import joblib
 import numpy as np
-import json
+import shap
 
-# Optional SHAP import
-try:
-    import shap
-except Exception:
-    shap = None
-
-
-class ModelWrapper:
-    def __init__(self, model_path: str):
-        self.model_path = model_path
-        self.model = None
-        self.explainer = None
-        self.version = "dev"
-        self.is_loaded = False
-        self._load()
-
-    def _load(self):
-        if not os.path.exists(self.model_path):
-            print(f"[ML] Model file not found at {self.model_path}")
-            return
-
-        self.model = joblib.load(self.model_path)
-        self.is_loaded = True
-        self.version = getattr(self.model, "version", "v1")
-
-        if shap is not None:
-            try:
-                self.explainer = shap.TreeExplainer(self.model)
-            except Exception as e:
-                print("[ML] SHAP explainer init failed:", e)
-
-    def _prepare(self, features: dict):
-        """
-        Convert feature dict to 2D numpy array in fixed column order
-        """
-        cols = ["heart_rate", "spo2", "temp_c", "steps"]
-        arr = [features.get(c, 0.0) for c in cols]
-        return np.array(arr).reshape(1, -1), cols
-
-    def predict_with_shap(self, features: dict):
-        if not self.is_loaded:
-            return "unknown", 0.0, {}, self.version
-
-        X, cols = self._prepare(features)
-
-        probs = self.model.predict_proba(X)[0]
-        prob = float(probs[1]) if len(probs) > 1 else float(probs[0])
-        label = str(self.model.classes_[np.argmax(probs)])
-
-        shap_json = {}
-        if self.explainer is not None:
-            try:
-                shap_vals = self.explainer.shap_values(X)
-
-                # Handle different SHAP output formats
-                if isinstance(shap_vals, list):
-                    sv = (
-                        shap_vals[1][0].tolist()
-                        if len(shap_vals) > 1
-                        else shap_vals[0][0].tolist()
-                    )
-                else:
-                    sv = shap_vals[0].tolist()
-
-                shap_json = dict(zip(cols, [float(x) for x in sv]))
-            except Exception as e:
-                print("[ML] SHAP compute error:", e)
-
-        return label, prob, shap_json, self.version
-
-
-# -------------------------------------------------
-# Global model wrapper instance
-# -------------------------------------------------
+# ------------------------
+# Paths
+# ------------------------
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_PATH = os.path.join(BASE_DIR, "model_training", "model.pkl")
+MODEL_DIR = os.path.join(BASE_DIR, "model_training")
 
-model_wrapper = None
+CLASSIFIER_PATH = os.path.join(MODEL_DIR, "model_classifier.pkl")
+REGRESSOR_PATH = os.path.join(MODEL_DIR, "model_regressor.pkl")
 
-try:
-    model_wrapper = ModelWrapper(MODEL_PATH)
-except Exception as e:
-    print("[ML] Model loading skipped:", e)
-    model_wrapper = None
+FEATURES = ["heart_rate", "spo2", "temp_c", "steps"]
 
 
-def predict_risk(heart_rate: int, spo2: int):
-    """
-    Simple fallback risk heuristic (used if model not loaded)
-    """
-    score = 0.0
-    explanation = {}
+# ------------------------
+# Model Wrapper
+# ------------------------
 
-    if heart_rate > 100:
-        score += 0.4
-        explanation["heart_rate"] = "high"
+class PulseModel:
+    def __init__(self):
+        self.classifier = None
+        self.regressor = None
+        self.explainer = None
+        self.is_loaded = False
+        self._load_models()
 
-    if spo2 < 95:
-        score += 0.6
-        explanation["spo2"] = "low"
+    def _load_models(self):
+        if not os.path.exists(CLASSIFIER_PATH) or not os.path.exists(REGRESSOR_PATH):
+            print("[ML] Model files not found")
+            return
 
-    return min(score, 1.0), explanation
+        self.classifier = joblib.load(CLASSIFIER_PATH)
+        self.regressor = joblib.load(REGRESSOR_PATH)
+
+        # SHAP works on regressor
+        self.explainer = shap.Explainer(self.regressor.predict)
+
+        self.is_loaded = True
+        print("[ML] Models + SHAP loaded successfully")
+
+    def _prepare(self, data: dict):
+        x = np.array([
+            data.get("heart_rate", 0),
+            data.get("spo2", 0),
+            data.get("temp_c", 0) or 0,
+            data.get("steps", 0) or 0,
+        ]).reshape(1, -1)
+        return x
+
+    def predict(self, data: dict):
+        if not self.is_loaded:
+            return None
+
+        X = self._prepare(data)
+
+        # ---- Classification ----
+        label = self.classifier.predict(X)[0]
+        probs = self.classifier.predict_proba(X)[0]
+        confidence = float(np.max(probs))
+
+        # ---- Regression ----
+        risk_score = float(self.regressor.predict(X)[0])
+
+        # ---- SHAP ----
+        shap_values = self.explainer(X)
+        shap_dict = {
+            FEATURES[i]: float(shap_values.values[0][i])
+            for i in range(len(FEATURES))
+        }
+
+        return {
+            "risk_label": label,
+            "confidence": confidence,
+            "risk_score": risk_score,
+            "shap": shap_dict,
+        }
+
+
+# ------------------------
+# Singleton
+# ------------------------
+
+pulse_model = PulseModel()

@@ -50,3 +50,9 @@ class PredictionOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PredictionResponse(BaseModel):
+    risk_label: str
+    confidence: float
+    risk_score: float
+    shap: dict
