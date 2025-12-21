@@ -3,6 +3,7 @@ import os
 import joblib
 import numpy as np
 import shap
+import pandas as pd
 
 # ------------------------
 # Paths
@@ -36,9 +37,20 @@ class PulseModel:
 
         self.classifier = joblib.load(CLASSIFIER_PATH)
         self.regressor = joblib.load(REGRESSOR_PATH)
+        # Load background data for SHAP
+        data_path = os.path.join(MODEL_DIR, "training_data.csv")
+        df = pd.read_csv(data_path)
 
-        # SHAP works on regressor
-        self.explainer = shap.Explainer(self.regressor.predict)
+        background = df[FEATURES].fillna(0).sample(
+            min(100, len(df)), random_state=42
+        )
+
+        self.explainer = shap.Explainer(
+            self.regressor.predict,
+            background
+        )
+
+
 
         self.is_loaded = True
         print("[ML] Models + SHAP loaded successfully")
