@@ -56,12 +56,13 @@ def main():
 
     try:
         while True:
+            device_id = random.choice(DEVICE_IDS) 
             mode = random.choices(MODES, weights=WEIGHTS, k=1)[0]
             vitals = generate_vitals(mode)
 
             payload = {
-                "device_id": random.choice(DEVICE_IDS),
-                "user_id": "pulse_user",
+                "device_id": device_id,
+                "user_id": device_id,   
                 "heart_rate": vitals["heart_rate"],
                 "spo2": vitals["spo2"],
                 "timestamp": datetime.utcnow().isoformat(),
