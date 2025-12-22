@@ -1,3 +1,4 @@
+# app/main.py
 import asyncio
 from datetime import datetime
 from threading import Thread
@@ -12,71 +13,136 @@ from app.db import (
     AsyncSessionLocal,
     Vitals,
     init_db,
-    insert_vital,
+    # insert_vital,  # not used directly here; we use a local helper
     fetch_latest_vital,
     fetch_history,
     fetch_metrics,
 )
+
+# optional import - if your db module exposes insert_prediction, we will use it
+try:
+    from app.db import insert_prediction
+except Exception:
+    insert_prediction = None
+
 from app.schemas import VitalOut, PredictionResponse
 from app.ml import pulse_model
 
-# ============================================================
-# App init
-# ============================================================
-
 app = FastAPI(title="Pulse Backend API")
 
-# ============================================================
-# Kafka handling
-# ============================================================
 
-async def handle_kafka_message(data: dict):
+# --------------------
+# Helpers: DB insert
+# --------------------
+async def insert_vital_record_from_dict(data: dict) -> int:
     """
-    Handles Kafka message → inserts vitals → optional ML inference
+    Insert a vital record into DB and return the new id.
+    Must be called from the main asyncio loop (i.e. not from a raw thread).
     """
-    try:
-        async with AsyncSessionLocal() as session:
-            v = Vitals(
-                device_id=data["device_id"],
-                user_id=data.get("user_id", data["device_id"]),
-                heart_rate=data["heart_rate"],
-                spo2=data["spo2"],
-                temp_c=data.get("temp_c"),
-                steps=data.get("steps"),
-                timestamp=datetime.fromisoformat(data["timestamp"]),
-            )
-            session.add(v)
-            await session.commit()
-
-            # ML inference (non-blocking)
-            features = {
-                "heart_rate": v.heart_rate,
-                "spo2": v.spo2,
-                "temp_c": v.temp_c or 0.0,
-                "steps": v.steps or 0,
-            }
-            pulse_model.predict(features)
-
-    except Exception as e:
-        print("[Kafka] Failed:", e, "| data:", data)
+    async with AsyncSessionLocal() as session:
+        v = Vitals(
+            device_id=data["device_id"],
+            user_id=data.get("user_id", data["device_id"]),
+            heart_rate=int(data["heart_rate"]),
+            spo2=int(data["spo2"]),
+            temp_c=float(data["temp_c"]) if data.get("temp_c") is not None else None,
+            steps=int(data["steps"]) if data.get("steps") is not None else None,
+            timestamp=datetime.fromisoformat(data["timestamp"])
+            if data.get("timestamp")
+            else datetime.utcnow(),
+        )
+        session.add(v)
+        await session.commit()
+        await session.refresh(v)
+        return v.id
 
 
+# --------------------
+# Kafka queue worker
+# --------------------
+async def kafka_queue_worker(q: asyncio.Queue):
+    """
+    Runs on the main asyncio loop. Consumes message dicts from queue,
+    writes them to DB and runs model inference (in executor).
+    """
+    print("[KafkaWorker] started")
+    loop = asyncio.get_running_loop()
+
+    while True:
+        data = await q.get()
+        try:
+            # insert to DB
+            vitals_id = await insert_vital_record_from_dict(data)
+            print("[KafkaWorker] inserted vitals_id:", vitals_id)
+
+            # Run model prediction in a threadpool (so heavy CPU doesn't block event loop)
+            if pulse_model and getattr(pulse_model, "is_loaded", True):
+                try:
+                    # run predict in executor; pulse_model.predict is assumed synchronous
+                    result = await loop.run_in_executor(
+                        None,
+                        lambda: pulse_model.predict(
+                            {
+                                "heart_rate": data["heart_rate"],
+                                "spo2": data["spo2"],
+                                "temp_c": data.get("temp_c", 0.0),
+                                "steps": data.get("steps", 0),
+                            }
+                        ),
+                    )
+                    print("[KafkaWorker] model result:", result)
+
+                    # persist prediction if helper exists
+                    if insert_prediction and result:
+                        # adapt fields to your insert_prediction signature
+                        # expecting: insert_prediction(vitals_id, label, probability, shap_json, version)
+                        label = result.get("risk_label") or result.get("label") or str(result)
+                        prob = float(result.get("confidence", result.get("probability", 0.0)))
+                        shap_json = result.get("shap", {})
+                        version = result.get("model_version", "v1")
+                        try:
+                            await insert_prediction(vitals_id, label, prob, shap_json, version)
+                        except Exception as e:
+                            print("[KafkaWorker] failed to insert prediction:", e)
+
+                except Exception as e:
+                    print("[KafkaWorker] model inference failed:", e)
+            else:
+                print("[KafkaWorker] model not loaded; skipping inference")
+
+        except Exception as e:
+            print("[Kafka] Failed:", e, "| data:", data)
+        finally:
+            q.task_done()
+
+
+# --------------------
+# Startup: DB + queue + consumer thread
+# --------------------
 @app.on_event("startup")
 async def startup_event():
     await init_db()
 
     loop = asyncio.get_running_loop()
 
+    # create a loop-owned asyncio.Queue and store on app.state
+    app.state.kafka_queue = asyncio.Queue()
+
+    # start the queue worker on the loop
+    asyncio.create_task(kafka_queue_worker(app.state.kafka_queue))
+
+    # start kafka consumer in background thread (consumer will push into queue)
+    # Consumer signature expected: start_consumer(loop, queue)
     Thread(
         target=start_consumer,
-        args=(loop, handle_kafka_message),
+        args=(loop, app.state.kafka_queue),
         daemon=True,
     ).start()
 
-# ============================================================
-# HTTP ingestion (manual / testing)
-# ============================================================
 
+# --------------------
+# HTTP ingestion (manual/test)
+# --------------------
 class IngestPayload(BaseModel):
     device_id: str
     user_id: str
@@ -89,40 +155,58 @@ class IngestPayload(BaseModel):
 
 @app.post("/api/v1/ingest")
 async def http_ingest(payload: IngestPayload):
-    vitals_id = await insert_vital(payload)
+    # reuse the same DB helper to insert and (optionally) run model
+    data = payload.dict()
+    if not data.get("timestamp"):
+        data["timestamp"] = datetime.utcnow().isoformat()
 
-    features = {
-        "heart_rate": payload.heart_rate,
-        "spo2": payload.spo2,
-        "temp_c": payload.temp_c or 0.0,
-        "steps": payload.steps or 0,
-    }
+    vitals_id = await insert_vital_record_from_dict(data)
 
-    result = pulse_model.predict(features)
+    # run model prediction (in executor)
+    loop = asyncio.get_running_loop()
+    result = None
+    if pulse_model and getattr(pulse_model, "is_loaded", True):
+        result = await loop.run_in_executor(None, lambda: pulse_model.predict({
+            "heart_rate": data["heart_rate"],
+            "spo2": data["spo2"],
+            "temp_c": data.get("temp_c", 0.0),
+            "steps": data.get("steps", 0),
+        }))
+        # persist if possible
+        if insert_prediction and result:
+            try:
+                label = result.get("risk_label") or result.get("label") or str(result)
+                prob = float(result.get("confidence", result.get("probability", 0.0)))
+                shap_json = result.get("shap", {})
+                version = result.get("model_version", "v1")
+                await insert_prediction(vitals_id, label, prob, shap_json, version)
+            except Exception as e:
+                print("[HTTP] insert_prediction failed:", e)
 
-    return {
-        "status": "ok",
-        "vitals_id": vitals_id,
-        "prediction": result,
-    }
+    return {"status": "ok", "vitals_id": vitals_id, "prediction": result}
 
-# ============================================================
-# Prediction endpoint (pure ML)
-# ============================================================
 
+# --------------------
+# Pure prediction endpoint
+# --------------------
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(payload: dict):
-    result = pulse_model.predict(payload)
+    if not (pulse_model and getattr(pulse_model, "is_loaded", True)):
+        raise HTTPException(status_code=500, detail="Model not loaded")
+
+    loop = asyncio.get_running_loop()
+    # run sync prediction in executor
+    result = await loop.run_in_executor(None, lambda: pulse_model.predict(payload))
 
     if not result:
-        raise HTTPException(status_code=500, detail="Model not loaded")
+        raise HTTPException(status_code=500, detail="Prediction failed")
 
     return result
 
-# ============================================================
-# Read APIs
-# ============================================================
 
+# --------------------
+# Read endpoints
+# --------------------
 @app.get("/readings/latest")
 async def latest_readings():
     async with AsyncSessionLocal() as session:
@@ -143,18 +227,16 @@ async def get_live(user_id: str):
 async def get_history(user_id: str, hours: int = 24):
     return await fetch_history(user_id, hours)
 
-# ============================================================
-# System health
-# ============================================================
 
 @app.get("/health")
 async def health():
     return {
         "status": "ok",
-        "ml_loaded": pulse_model.is_loaded,
+        "ml_loaded": bool(getattr(pulse_model, "is_loaded", False)),
     }
 
 
 @app.get("/api/v1/metrics")
 async def get_model_metrics():
     return await fetch_metrics()
+
