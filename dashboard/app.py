@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Pulse", layout="wide")
 st.title("Pulse — Live Health Monitor")
-st.experimental_set_query_params(t=int(time.time()))
+st.query_params(t=int(time.time()))
 
 user_id = st.text_input("Enter User ID", value="pulse_001")
 
