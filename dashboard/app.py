@@ -8,7 +8,7 @@ import time
 # Page config
 # --------------------------------------------------
 st.set_page_config(page_title="Pulse", layout="wide")
-st.title("Pulse — Live Health Monitor")
+st.title("Pulse")
 
 API_BASE = "http://127.0.0.1:8000"
 
@@ -132,11 +132,44 @@ shap_df = (
     .sort_values("impact")
 )
 
-fig, ax = plt.subplots(figsize=(6, 3))
-ax.barh(shap_df["feature"], shap_df["impact"])
-ax.set_xlabel("Impact on Risk")
+# ---- Dark themed SHAP plot ----
+plt.style.use("dark_background")
+
+fig, ax = plt.subplots(figsize=(6, 4))
+
+# Colors
+BAR_COLOR = "#7EC8FF"      # soft light blue
+TEXT_COLOR = "#E6E6E6"
+GRID_COLOR = "#2A2A2A"
+BG_COLOR = "#0E1117"       # Streamlit dark bg match
+
+fig.patch.set_facecolor(BG_COLOR)
+ax.set_facecolor(BG_COLOR)
+
+ax.barh(
+    shap_df["feature"],
+    shap_df["impact"],
+    color=BAR_COLOR,
+    alpha=0.85
+)
+
 ax.invert_yaxis()
+
+# Labels & styling
+ax.set_xlabel("Impact on Risk", color=TEXT_COLOR, fontsize=10)
+ax.set_ylabel("Feature", color=TEXT_COLOR, fontsize=10)
+ax.tick_params(colors=TEXT_COLOR)
+
+# Subtle grid
+ax.xaxis.grid(True, linestyle="--", alpha=0.2, color=GRID_COLOR)
+ax.yaxis.grid(False)
+
+# Remove harsh borders
+for spine in ax.spines.values():
+    spine.set_visible(False)
+
 st.pyplot(fig)
+
 
 # --------------------------------------------------
 # Auto refresh
