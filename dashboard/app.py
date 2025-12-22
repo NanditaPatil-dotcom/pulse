@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Pulse", layout="wide")
 st.title("Pulse — Live Health Monitor")
+st.experimental_set_query_params(t=int(time.time()))
 
 user_id = st.text_input("Enter User ID", value="pulse_001")
 
@@ -16,7 +17,7 @@ API_BASE = "http://127.0.0.1:8000"
 def fetch_history(user_id):
     r = requests.get(
         f"{API_BASE}/api/v1/history",
-        params={"user_id": user_id, "hours": 24}
+        params={"user_id": user_id, "hours": 0.166}
     )
     if r.status_code != 200:
         return None
@@ -29,16 +30,24 @@ if df is None or df.empty:
 
 df["timestamp"] = pd.to_datetime(df["timestamp"])
 df = df.sort_values("timestamp")
+df = df.tail(200)
 
+df["heart_rate_smooth"] = df["heart_rate"].rolling(
+    window=5, min_periods=1
+).mean()
+
+df["spo2_smooth"] = df["spo2"].rolling(
+    window=5, min_periods=1
+).mean()
 st.subheader("Vitals over time")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.line_chart(df.set_index("timestamp")["heart_rate"])
+    st.line_chart(df.set_index("timestamp")["heart_rate_smooth"])
 
 with col2:
-    st.line_chart(df.set_index("timestamp")["spo2"])
+    st.line_chart(df.set_index("timestamp")["spo2_smooth"])
 
 latest = df.iloc[-1]
 
