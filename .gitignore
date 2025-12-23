@@ -1,0 +1,72 @@
+
+# Global
+
+__pycache__/
+*.py[cod]
+*.log
+*.pid
+*.sqlite3
+*.db
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+
+venv/
+.env
+.env.*
+!.env.example
+
+
+# Backend
+
+backend/venv/
+backend/__pycache__/
+backend/.env
+backend/*.log
+backend/*.pyc
+backend/models/
+backend/.pytest_cache/
+
+
+# Simulator
+
+simulator/__pycache__/
+simulator/.env
+simulator/*.log
+
+
+# Dashboard
+
+dashboard/__pycache__/
+dashboard/.env
+dashboard/*.log
+
+
+# Infra (Docker / Kafka / DB)
+
+infra/.env
+infra/postgres/data/
+infra/kafka/data/
+infra/zookeeper/data/
+
+# Docker artifacts
+**/Dockerfile.*
+**/.dockerignore
+
+
+# ML / Data
+
+*.pkl
+*.joblib
+models/
+data/
+
+
+# Misc
+
+coverage/
+htmlcov/
