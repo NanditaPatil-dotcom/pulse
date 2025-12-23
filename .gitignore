@@ -56,9 +56,7 @@ dashboard/__pycache__/
 .streamlit/
 .cache/
 
-# ===============================
-# Infra (data only, not configs)
-# ===============================
+
 infra/.env
 infra/postgres/data/
 

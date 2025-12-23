@@ -35,16 +35,15 @@ services:
       - postgres
     ports:
       - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://pulse_admin:pulse_pass@postgres:5432/pulse_db
-      KAFKA_BOOTSTRAP: kafka:9092
+    env_file:
+      - .env
 
   simulator:
     build: ../simulator
     depends_on:
       - kafka
-    environment:
-      KAFKA_BOOTSTRAP: kafka:9092
+    env_file:
+      - .env
 
   dashboard:
     build: ../dashboard
@@ -52,5 +51,6 @@ services:
       - backend
     ports:
       - "8501:8501"
+
 
 
