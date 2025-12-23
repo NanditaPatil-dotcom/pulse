@@ -1,18 +1,13 @@
-version: '3.8'
+version: "3.9"
 
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: zookeeper
+    image: confluentinc/cp-zookeeper:7.6.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
 
   kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: kafka
+    image: confluentinc/cp-kafka:7.6.0
     depends_on:
       - zookeeper
     ports:
@@ -20,27 +15,42 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_CREATE_TOPICS: "sensor_data:1:1"
-    volumes:
-      - kafka_data:/var/lib/kafka/data
 
   postgres:
-    image: postgres:15
-    container_name: postgres
-    restart: always
+    image: postgres:16
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: pulse_db
+      POSTGRES_USER: pulse_admin
+      POSTGRES_PASSWORD: pulse_pass
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
 
-volumes:
-  kafka_data:
-  postgres_data:
+  backend:
+    build: ../backend
+    depends_on:
+      - kafka
+      - postgres
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://pulse_admin:pulse_pass@postgres:5432/pulse_db
+      KAFKA_BOOTSTRAP: kafka:9092
+
+  simulator:
+    build: ../simulator
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+
+  dashboard:
+    build: ../dashboard
+    depends_on:
+      - backend
+    ports:
+      - "8501:8501"
+
 
