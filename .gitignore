@@ -52,7 +52,7 @@ infra/.env
 infra/postgres/data/
 infra/kafka/data/
 infra/zookeeper/data/
-
+infra/docker-compose.yml
 # Docker artifacts
 **/Dockerfile.*
 **/.dockerignore
