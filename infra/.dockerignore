@@ -1,0 +1,36 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Tests & docs
+tests/
+*.md
+
+# Logs
+*.log
+
+# ML / Data 
+models/
+data/
+*.pkl
+*.joblib
+
+# Docker
+Dockerfile
+docker-compose.yml

@@ -1,72 +1,87 @@
-
-# Global
-
+# ===============================
+# Global Python
+# ===============================
 __pycache__/
 *.py[cod]
-*.log
-*.pid
-*.sqlite3
-*.db
+*.pyo
+*.pyd
 
-# OS / Editor
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-
+# ===============================
+# Virtual environments & secrets
+# ===============================
 venv/
 .env
 .env.*
 !.env.example
 
+# ===============================
+# Logs / runtime
+# ===============================
+*.log
+*.pid
+*.out
+*.err
 
+# ===============================
+# OS / Editor
+# ===============================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# ===============================
 # Backend
-
-backend/venv/
-backend/__pycache__/
+# ===============================
 backend/.env
 backend/*.log
-backend/*.pyc
-backend/models/
 backend/.pytest_cache/
+backend/models/
+backend/__pycache__/
 
-
+# ===============================
 # Simulator
-
-simulator/__pycache__/
+# ===============================
 simulator/.env
 simulator/*.log
+simulator/__pycache__/
 
-
-# Dashboard
-
-dashboard/__pycache__/
+# ===============================
+# Dashboard / Streamlit
+# ===============================
 dashboard/.env
 dashboard/*.log
+dashboard/__pycache__/
+.streamlit/
+.cache/
 
-
-# Infra (Docker / Kafka / DB)
-
+# ===============================
+# Infra (data only, not configs)
+# ===============================
 infra/.env
 infra/postgres/data/
-infra/kafka/data/
-infra/zookeeper/data/
-infra/docker-compose.yml
-# Docker artifacts
-**/Dockerfile.*
-**/.dockerignore
 
-
-# ML / Data
-
+# ===============================
+# ML / Data artifacts
+# ===============================
 *.pkl
 *.joblib
+*.onnx
+*.h5
 models/
 data/
+datasets/
 
-
-# Misc
-
-coverage/
+# ===============================
+# Tests / Coverage
+# ===============================
+.coverage
 htmlcov/
+.pytest_cache/
+
+# ===============================
+# Misc
+# ===============================
+coverage/
+
