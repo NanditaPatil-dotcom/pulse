@@ -49,6 +49,10 @@ Simulator  ──▶  Kafka  ──▶  Backend (FastAPI + ML)  ──▶  Postg
 No local Python or Kafka installation is required when using Docker.
 
 ---
+<img width="1770" height="757" alt="image" src="https://github.com/user-attachments/assets/3a445273-0a8c-4f7e-9b62-c72370b059fa" />
+<img width="1733" height="136" alt="image" src="https://github.com/user-attachments/assets/b0ca3d38-b8e2-40e0-8a44-5de559ccbd7d" />
+<img width="1803" height="874" alt="image" src="https://github.com/user-attachments/assets/b2cbeb93-8435-43f4-aa86-5d8c67f9dfce" />
+
 
 ## How to Fork and Run the Project
 
