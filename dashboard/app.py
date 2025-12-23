@@ -3,14 +3,14 @@ import requests
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
-
+import os
 # --------------------------------------------------
 # Page config
 # --------------------------------------------------
 st.set_page_config(page_title="Pulse", layout="wide")
 st.title("Pulse")
 
-API_BASE = "http://127.0.0.1:8000"
+API_BASE = os.getenv("API_BASE", "http://backend:8000")
 
 # --------------------------------------------------
 # Controls
@@ -63,11 +63,11 @@ if df.empty:
 # --------------------------------------------------
 # Smoothing
 # --------------------------------------------------
-df["heart_rate_smooth"] = df["heart_rate"].rolling(
+df["heart_rate"] = df["heart_rate"].rolling(
     window=5, min_periods=1
 ).mean()
 
-df["spo2_smooth"] = df["spo2"].rolling(
+df["spo2"] = df["spo2"].rolling(
     window=5, min_periods=1
 ).mean()
 
@@ -81,14 +81,14 @@ col1, col2 = st.columns(2)
 with col1:
     st.caption("Heart Rate (smoothed)")
     st.line_chart(
-        df.set_index("timestamp")["heart_rate_smooth"],
+        df.set_index("timestamp")["heart_rate"],
         height=300,
     )
 
 with col2:
     st.caption("SpO₂ (smoothed)")
     st.line_chart(
-        df.set_index("timestamp")["spo2_smooth"],
+        df.set_index("timestamp")["spo2"],
         height=300,
     )
 

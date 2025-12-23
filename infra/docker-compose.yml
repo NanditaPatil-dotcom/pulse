@@ -40,25 +40,28 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER"]
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   backend:
-    build: ../backend
-    container_name: backend
-    depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    volumes:
-      - ../backend/model_training:/models:ro
+   build:
+    context: ../backend
+   container_name: backend
+   depends_on:
+    kafka:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+   ports:
+    - "8000:8000"
+   env_file:
+    - .env
+   volumes:
+    - ../backend/model_training:/models:ro,z
+   restart: unless-stopped
+
 
   simulator:
     build: ../simulator
@@ -80,10 +83,7 @@ services:
       - "8501:8501"
     env_file:
       - .env
+    restart: unless-stopped
 
 volumes:
   postgres_data:
-
-
-
-
