@@ -1,4 +1,3 @@
-# app/db.py
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
@@ -11,18 +10,12 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 print("DATABASE_URL =", repr(DATABASE_URL))
 
-# ---------------------------
-# Engine + Async sessionmaker
-# ---------------------------
-# DATABASE_URL must use async driver, e.g. postgresql+asyncpg://...
+
 engine = create_async_engine(DATABASE_URL, future=True, echo=False)
 AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
 Base = declarative_base()
 
-# ---------------------------
-# Models
-# ---------------------------
 class Vitals(Base):
     __tablename__ = "vitals"
 
@@ -48,9 +41,7 @@ class Predictions(Base):
     created_at = Column(DateTime, default=func.now())
 
 
-# ---------------------------
-# DB helpers
-# ---------------------------
+
 async def init_db():
     """Create tables (idempotent)."""
     async with engine.begin() as conn:
@@ -68,11 +59,11 @@ async def insert_vital(vital_obj):
     Accept either a pydantic-like object with attributes
     or a dict. Returns inserted id.
     """
-    # normalize input
+
     if isinstance(vital_obj, dict):
         d = vital_obj
     else:
-        # assume object with attributes
+
         d = {
             "device_id": getattr(vital_obj, "device_id", None),
             "user_id": getattr(vital_obj, "user_id", None),

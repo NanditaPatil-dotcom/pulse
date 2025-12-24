@@ -1,4 +1,3 @@
-"""Utility helpers: timestamp parsing, basic feature engineering functions."""
 from datetime import datetime
 
 def parse_ts(ts_str_or_val):

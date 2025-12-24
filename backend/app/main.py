@@ -1,4 +1,3 @@
-# app/main.py
 import asyncio
 from datetime import datetime
 from threading import Thread
@@ -13,13 +12,12 @@ from app.db import (
     AsyncSessionLocal,
     Vitals,
     init_db,
-    # insert_vital,  # not used directly here; we use a local helper
     fetch_latest_vital,
     fetch_history,
     fetch_metrics,
 )
 
-# optional import - if your db module exposes insert_prediction, we will use it
+
 try:
     from app.db import insert_prediction
 except Exception:
@@ -31,9 +29,6 @@ from app.ml import pulse_model
 app = FastAPI(title="Pulse Backend API")
 
 
-# --------------------
-# Helpers: DB insert
-# --------------------
 async def insert_vital_record_from_dict(data: dict) -> int:
     """
     Insert a vital record into DB and return the new id.
@@ -56,10 +51,6 @@ async def insert_vital_record_from_dict(data: dict) -> int:
         await session.refresh(v)
         return v.id
 
-
-# --------------------
-# Kafka queue worker
-# --------------------
 async def kafka_queue_worker(q: asyncio.Queue):
     """
     Runs on the main asyncio loop. Consumes message dicts from queue,
@@ -71,14 +62,14 @@ async def kafka_queue_worker(q: asyncio.Queue):
     while True:
         data = await q.get()
         try:
-            # insert to DB
+
             vitals_id = await insert_vital_record_from_dict(data)
             print("[KafkaWorker] inserted vitals_id:", vitals_id)
 
-            # Run model prediction in a threadpool (so heavy CPU doesn't block event loop)
+
             if pulse_model and getattr(pulse_model, "is_loaded", True):
                 try:
-                    # run predict in executor; pulse_model.predict is assumed synchronous
+
                     result = await loop.run_in_executor(
                         None,
                         lambda: pulse_model.predict(
@@ -92,10 +83,8 @@ async def kafka_queue_worker(q: asyncio.Queue):
                     )
                     print("[KafkaWorker] model result:", result)
 
-                    # persist prediction if helper exists
+
                     if insert_prediction and result:
-                        # adapt fields to your insert_prediction signature
-                        # expecting: insert_prediction(vitals_id, label, probability, shap_json, version)
                         label = result.get("risk_label") or result.get("label") or str(result)
                         prob = float(result.get("confidence", result.get("probability", 0.0)))
                         shap_json = result.get("shap", {})
@@ -116,23 +105,18 @@ async def kafka_queue_worker(q: asyncio.Queue):
             q.task_done()
 
 
-# --------------------
-# Startup: DB + queue + consumer thread
-# --------------------
 @app.on_event("startup")
 async def startup_event():
     await init_db()
 
     loop = asyncio.get_running_loop()
 
-    # create a loop-owned asyncio.Queue and store on app.state
+
     app.state.kafka_queue = asyncio.Queue()
 
-    # start the queue worker on the loop
+
     asyncio.create_task(kafka_queue_worker(app.state.kafka_queue))
 
-    # start kafka consumer in background thread (consumer will push into queue)
-    # Consumer signature expected: start_consumer(loop, queue)
     Thread(
         target=start_consumer,
         args=(loop, app.state.kafka_queue),
@@ -140,9 +124,7 @@ async def startup_event():
     ).start()
 
 
-# --------------------
-# HTTP ingestion (manual/test)
-# --------------------
+
 class IngestPayload(BaseModel):
     device_id: str
     user_id: str
@@ -155,14 +137,14 @@ class IngestPayload(BaseModel):
 
 @app.post("/api/v1/ingest")
 async def http_ingest(payload: IngestPayload):
-    # reuse the same DB helper to insert and (optionally) run model
+
     data = payload.dict()
     if not data.get("timestamp"):
         data["timestamp"] = datetime.utcnow().isoformat()
 
     vitals_id = await insert_vital_record_from_dict(data)
 
-    # run model prediction (in executor)
+
     loop = asyncio.get_running_loop()
     result = None
     if pulse_model and getattr(pulse_model, "is_loaded", True):
@@ -172,7 +154,7 @@ async def http_ingest(payload: IngestPayload):
             "temp_c": data.get("temp_c", 0.0),
             "steps": data.get("steps", 0),
         }))
-        # persist if possible
+
         if insert_prediction and result:
             try:
                 label = result.get("risk_label") or result.get("label") or str(result)
@@ -186,16 +168,14 @@ async def http_ingest(payload: IngestPayload):
     return {"status": "ok", "vitals_id": vitals_id, "prediction": result}
 
 
-# --------------------
-# Pure prediction endpoint
-# --------------------
+
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(payload: dict):
     if not (pulse_model and getattr(pulse_model, "is_loaded", True)):
         raise HTTPException(status_code=500, detail="Model not loaded")
 
     loop = asyncio.get_running_loop()
-    # run sync prediction in executor
+
     result = await loop.run_in_executor(None, lambda: pulse_model.predict(payload))
 
     if not result:
@@ -204,9 +184,6 @@ async def predict(payload: dict):
     return result
 
 
-# --------------------
-# Read endpoints
-# --------------------
 @app.get("/readings/latest")
 async def latest_readings():
     async with AsyncSessionLocal() as session:

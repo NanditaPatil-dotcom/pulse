@@ -4,9 +4,7 @@ import numpy as np
 import shap
 import pandas as pd
 
-# --------------------------------------------------
-# Configuration
-# --------------------------------------------------
+
 
 FEATURES = ["heart_rate", "spo2", "temp_c", "steps"]
 
@@ -17,9 +15,7 @@ REGRESSOR_PATH = os.path.join(MODEL_DIR, "model_regressor.pkl")
 TRAINING_DATA_PATH = os.path.join(MODEL_DIR, "training_data.csv")
 
 
-# --------------------------------------------------
-# Model Wrapper
-# --------------------------------------------------
+
 
 class PulseModel:
     def __init__(self):
@@ -57,9 +53,7 @@ class PulseModel:
         self.is_loaded = True
         print("[ML] Models + SHAP loaded successfully")
 
-    # --------------------------------------------------
-    # Input preparation (FIXED)
-    # --------------------------------------------------
+
     def _prepare(self, data: dict) -> pd.DataFrame:
         return pd.DataFrame([{
             "heart_rate": data.get("heart_rate", 0),
@@ -68,9 +62,7 @@ class PulseModel:
             "steps": data.get("steps", 0) or 0,
         }])
 
-    # --------------------------------------------------
-    # Prediction
-    # --------------------------------------------------
+
     def predict(self, data: dict):
         if not self.is_loaded:
             return None
@@ -100,9 +92,6 @@ class PulseModel:
         }
 
 
-# --------------------------------------------------
-# Singleton instance
-# --------------------------------------------------
 
 pulse_model = PulseModel()
 

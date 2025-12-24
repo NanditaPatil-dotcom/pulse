@@ -1,4 +1,3 @@
--- optional initial SQL to create schema or seed data
 CREATE TABLE IF NOT EXISTS sample_users (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(50) UNIQUE,

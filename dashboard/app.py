@@ -4,31 +4,25 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import time
 import os
-# --------------------------------------------------
-# Page config
-# --------------------------------------------------
+
 st.set_page_config(page_title="Pulse", layout="wide")
 st.title("Pulse")
 
 API_BASE = os.getenv("API_BASE", "http://backend:8000")
 
-# --------------------------------------------------
-# Controls
-# --------------------------------------------------
-user_id = st.text_input("Enter User ID", value="pulse_001")
-REFRESH_SECONDS = 5        # dashboard refresh rate
-WINDOW_MINUTES = 10        # last 10 minutes of data
 
-# --------------------------------------------------
-# Data fetch
-# --------------------------------------------------
+user_id = st.text_input("Enter User ID", value="pulse_001")
+REFRESH_SECONDS = 5        
+WINDOW_MINUTES = 10        
+
+
 @st.cache_data(ttl=REFRESH_SECONDS)
 def fetch_history(user_id: str) -> pd.DataFrame:
     r = requests.get(
         f"{API_BASE}/api/v1/history",
         params={
             "user_id": user_id,
-            "hours": 1,   # IMPORTANT: backend expects int hours
+            "hours": 1,   
         },
         timeout=5,
     )
@@ -43,9 +37,7 @@ if df.empty:
     st.warning("No vitals found.")
     st.stop()
 
-# --------------------------------------------------
-# Time filtering (frontend, precise)
-# --------------------------------------------------
+
 df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True).dt.tz_localize(None)
 df = df.sort_values("timestamp")
 
@@ -60,9 +52,7 @@ if df.empty:
     st.warning("No vitals in the selected time window.")
     st.stop()
 
-# --------------------------------------------------
-# Smoothing
-# --------------------------------------------------
+
 df["heart_rate"] = df["heart_rate"].rolling(
     window=5, min_periods=1
 ).mean()
@@ -71,9 +61,7 @@ df["spo2"] = df["spo2"].rolling(
     window=5, min_periods=1
 ).mean()
 
-# --------------------------------------------------
-# Charts
-# --------------------------------------------------
+
 st.subheader("Vitals over time")
 
 col1, col2 = st.columns(2)
@@ -92,9 +80,6 @@ with col2:
         height=300,
     )
 
-# --------------------------------------------------
-# Prediction (latest point)
-# --------------------------------------------------
 latest = df.iloc[-1]
 
 payload = {
@@ -170,10 +155,6 @@ for spine in ax.spines.values():
 
 st.pyplot(fig)
 
-
-# --------------------------------------------------
-# Auto refresh
-# --------------------------------------------------
 time.sleep(REFRESH_SECONDS)
 st.rerun()
 

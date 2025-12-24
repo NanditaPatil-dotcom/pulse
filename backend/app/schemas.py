@@ -3,10 +3,6 @@ from typing import Optional
 from datetime import datetime
 
 
-# -------------------------
-# Input schema (ingestion)
-# -------------------------
-
 class VitalIn(BaseModel):
     device_id: str
     user_id: str
@@ -17,9 +13,7 @@ class VitalIn(BaseModel):
     steps: Optional[int] = None
 
 
-# -------------------------
-# Output schema (vitals)
-# -------------------------
+
 
 class VitalOut(BaseModel):
     id: int
@@ -32,12 +26,9 @@ class VitalOut(BaseModel):
     steps: Optional[int] = None
 
     class Config:
-        from_attributes = True   # SQLAlchemy async compatible
+        from_attributes = True   
 
 
-# -------------------------
-# Output schema (prediction)
-# -------------------------
 
 class PredictionOut(BaseModel):
     id: int
